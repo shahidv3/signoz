@@ -1,5 +1,3 @@
-README.md
-
 # SigNoz Observability POC
 
 This repository sets up a full observability proof-of-concept using [SigNoz](https://signoz.io) and [OpenTelemetry](https://opentelemetry.io/) with support for:
@@ -60,27 +58,91 @@ helm install signoz-poc . -f values.yaml
 ## 🪟 Windows VM Monitoring
 1. Download [otelcol.exe](https://github.com/open-telemetry/opentelemetry-collector-releases/releases)
 2. Use the config file:
-   ```bash
-   otelcol.exe --config windows/otelcol-windows-config.yaml
+   ```yaml
+   receivers:
+     hostmetrics:
+       collection_interval: 60s
+       scrapers:
+         cpu:
+         memory:
+         disk:
+         network:
+
+   exporters:
+     otlp:
+       endpoint: <SIGNOZ_OTEL_COLLECTOR_IP>:4317
+       tls:
+         insecure: true
+
+   service:
+     pipelines:
+       metrics:
+         receivers: [hostmetrics]
+         exporters: [otlp]
    ```
-3. Ensure outbound access to your OTEL Collector service.
+3. Run with:
+   ```bash
+   otelcol.exe --config otelcol-windows-config.yaml
+   ```
 
 ---
 
 ## 🐧 Linux VM Monitoring
+```yaml
+receivers:
+  hostmetrics:
+    collection_interval: 60s
+    scrapers:
+      cpu:
+      memory:
+      disk:
+      filesystem:
+      network:
+
+exporters:
+  otlp:
+    endpoint: <SIGNOZ_OTEL_COLLECTOR_IP>:4317
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    metrics:
+      receivers: [hostmetrics]
+      exporters: [otlp]
+```
+Run with:
 ```bash
-otelcol --config linux/otelcol-linux-config.yaml
+otelcol --config otelcol-linux-config.yaml
 ```
 
 ---
 
-## 🗄️ Database Monitoring (e.g., PostgreSQL)
-```bash
-docker run -d -p 9104:9187 \
-  -e DATA_SOURCE_NAME="postgresql://user:password@host:5432/dbname?sslmode=disable" \
-  prometheuscommunity/postgres-exporter
+## 🗄️ PostgreSQL Monitoring (Exporter)
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-exporter
+  template:
+    metadata:
+      labels:
+        app: postgres-exporter
+    spec:
+      containers:
+        - name: exporter
+          image: prometheuscommunity/postgres-exporter
+          ports:
+            - containerPort: 9187
+          env:
+            - name: DATA_SOURCE_NAME
+              value: "postgresql://user:password@postgresql-host:5432/dbname?sslmode=disable"
 ```
-> Ensure that the Prometheus scrape config in `values.yaml` includes this target.
 
 ---
 
