@@ -1,3 +1,5 @@
+namespaceOverride: observability
+
 signoz:
   fullnameOverride: signoz
   frontend:
@@ -60,7 +62,7 @@ opentelemetry-collector:
           scrape_configs:
             - job_name: 'db-metrics'
               static_configs:
-                - targets: ['postgres-exporter.default.svc.cluster.local:9187']
+                - targets: ['postgres-exporter.observability.svc.cluster.local:9187']
     processors:
       batch:
       memory_limiter:
@@ -69,7 +71,7 @@ opentelemetry-collector:
         spike_limit_mib: 100
     exporters:
       otlp:
-        endpoint: signoz-otel-collector.default.svc.cluster.local:4317
+        endpoint: signoz-otel-collector.observability.svc.cluster.local:4317
         tls:
           insecure: true
     service:
