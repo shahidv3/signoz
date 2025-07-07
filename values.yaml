@@ -1,0 +1,144 @@
+signoz:
+  fullnameOverride: signoz
+  frontend:
+    service:
+      type: ClusterIP
+  queryService:
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+  storage:
+    storageClass: standard
+  clickhouse:
+    enabled: false
+  externalClickhouse:
+    host: clickhouse-cluster.default.svc.cluster.local
+    port: 9000
+    user: signoz
+    password: "secure_password"
+    database: signoz_traces
+  redis:
+    enabled: true
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+opentelemetry-collector:
+  mode: daemonset
+  fullnameOverride: otel-collector
+  config:
+    receivers:
+      hostmetrics:
+        collection_interval: 60s
+        scrapers:
+          cpu:
+          memory:
+          disk:
+          filesystem:
+          network:
+          paging:
+          processes:
+          system:
+      kubeletstats:
+        collection_interval: 60s
+        auth_type: serviceAccount
+        endpoint: ":10250"
+        insecure_skip_verify: true
+        extra_metadata_labels:
+          - container.id
+      otlp:
+        protocols:
+          grpc:
+          http:
+      prometheus:
+        config:
+          scrape_configs:
+            - job_name: 'db-metrics'
+              static_configs:
+                - targets: ['postgres-exporter.default.svc.cluster.local:9187']
+    processors:
+      batch:
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 400
+        spike_limit_mib: 100
+    exporters:
+      otlp:
+        endpoint: signoz-otel-collector.default.svc.cluster.local:4317
+        tls:
+          insecure: true
+    service:
+      pipelines:
+        metrics:
+          receivers: [hostmetrics, kubeletstats, prometheus]
+          processors: [memory_limiter, batch]
+          exporters: [otlp]
+        traces:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [otlp]
+
+  extraEnvs:
+    - name: K8S_NODE_NAME
+      valueFrom:
+        fieldRef:
+          fieldPath: spec.nodeName
+  extraVolumes:
+    - name: hostfs
+      hostPath:
+        path: /
+  extraVolumeMounts:
+    - name: hostfs
+      mountPath: /hostfs
+      readOnly: true
+
+clickhouse-cluster:
+  enabled: true
+  zookeeper:
+    enabled: true
+    replicaCount: 1
+  clickhouse:
+    replicas: 1
+    shards: 1
+    persistence:
+      enabled: true
+      size: 50Gi
+      storageClass: standard
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+      requests:
+        cpu: 500m
+        memory: 1Gi
+    config:
+      macros:
+        cluster: clickhouse-cluster
+      users:
+        signoz:
+          password: "secure_password"
+          networks:
+            - 0.0.0.0/0
+          profile: default
+          quota: default
+
+nodeSelector:
+  kubernetes.io/os: linux
+
+tolerations:
+  - key: "node-role.kubernetes.io/master"
+    operator: "Exists"
+    effect: "NoSchedule"
+
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
